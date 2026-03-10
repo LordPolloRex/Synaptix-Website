@@ -1,7 +1,6 @@
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Stars, Line, Float, Text } from '@react-three/drei';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { useRef, useMemo, useState } from 'react';
+import { OrbitControls, Float } from '@react-three/drei';
+import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 
 // A component that represents a node in the AI/City network
@@ -37,6 +36,45 @@ function DataPacket({ start, end, speed, color }: { start: THREE.Vector3, end: T
   );
 }
 
+// A custom line component to replace Drei's Line (which can sometimes cause reconciler errors)
+function ConnectionLine({ start, end, color }: { start: THREE.Vector3, end: THREE.Vector3, color: string }) {
+  const geometry = useMemo(() => {
+    return new THREE.BufferGeometry().setFromPoints([start, end]);
+  }, [start, end]);
+
+  return (
+    <line geometry={geometry}>
+      <lineBasicMaterial color={color} transparent opacity={0.15} />
+    </line>
+  );
+}
+
+// A lightweight space dust particle system to replace Drei's Stars
+function SpaceDust() {
+  const particles = useMemo(() => {
+    const temp = new Float32Array(3000 * 3);
+    for (let i = 0; i < 3000 * 3; i++) {
+      temp[i] = (Math.random() - 0.5) * 100;
+    }
+    return temp;
+  }, []);
+
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={3000}
+          array={particles}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <pointsMaterial size={0.15} color="#ffffff" transparent opacity={0.6} />
+    </points>
+  );
+}
+
+// The central data network
 function Network() {
   const nodeCount = 40;
   const groupRef = useRef<THREE.Group>(null);
@@ -81,18 +119,17 @@ function Network() {
         <NetworkNode 
           key={i} 
           position={[pos.x, pos.y, pos.z]} 
-          color={i % 4 === 0 ? '#00ffcc' : i % 3 === 0 ? '#0066ff' : '#1a365d'} 
+          // Cyberpunk color palette: Cyan, Magenta, Blue
+          color={i % 4 === 0 ? '#00ffcc' : i % 3 === 0 ? '#ff00ff' : '#0066ff'} 
           size={i % 5 === 0 ? 0.2 : 0.1}
         />
       ))}
       {connections.map((conn, i) => (
         <group key={`conn-${i}`}>
-          <Line
-            points={[conn.start, conn.end]}
-            color={i % 3 === 0 ? '#00ffcc' : '#0066ff'}
-            lineWidth={1}
-            transparent
-            opacity={0.15}
+          <ConnectionLine
+            start={conn.start}
+            end={conn.end}
+            color={i % 3 === 0 ? '#00ffcc' : i % 2 === 0 ? '#ff00ff' : '#0066ff'}
           />
           <DataPacket 
             start={conn.start} 
@@ -106,120 +143,41 @@ function Network() {
   );
 }
 
-// A component that represents a Cyberpunk Traffic Light
-function TrafficLight({ position }: { position: [number, number, number] }) {
-  const [activeLight, setActiveLight] = useState(0); // 0: red, 1: yellow, 2: green
-  
-  useFrame((state) => {
-    // Cycle lights every 3 seconds
-    const time = state.clock.elapsedTime;
-    setActiveLight(Math.floor(time / 3) % 3);
-  });
-
-  return (
-    <group position={position}>
-      {/* Main Body */}
-      <mesh>
-        <boxGeometry args={[1, 3, 0.8]} />
-        <meshStandardMaterial color="#111" metalness={0.9} roughness={0.1} />
-      </mesh>
-      
-      {/* Tech Details / Frame */}
-      <mesh position={[0, 0, 0.45]}>
-        <boxGeometry args={[1.1, 3.1, 0.1]} />
-        <meshStandardMaterial color="#222" metalness={1} roughness={0} />
-      </mesh>
-
-      {/* Lights */}
-      <group position={[0, 0, 0.5]}>
-        {/* Red */}
-        <mesh position={[0, 0.9, 0]}>
-          <sphereGeometry args={[0.35, 32, 32]} />
-          <meshStandardMaterial 
-            color="#ff0000" 
-            emissive="#ff0000" 
-            emissiveIntensity={activeLight === 0 ? 10 : 0.2} 
-            toneMapped={false} 
-          />
-        </mesh>
-        {/* Yellow */}
-        <mesh position={[0, 0, 0]}>
-          <sphereGeometry args={[0.35, 32, 32]} />
-          <meshStandardMaterial 
-            color="#ffaa00" 
-            emissive="#ffaa00" 
-            emissiveIntensity={activeLight === 1 ? 10 : 0.2} 
-            toneMapped={false} 
-          />
-        </mesh>
-        {/* Green */}
-        <mesh position={[0, -0.9, 0]}>
-          <sphereGeometry args={[0.35, 32, 32]} />
-          <meshStandardMaterial 
-            color="#00ffcc" 
-            emissive="#00ffcc" 
-            emissiveIntensity={activeLight === 2 ? 10 : 0.2} 
-            toneMapped={false} 
-          />
-        </mesh>
-      </group>
-
-      {/* Glowing wires/lines */}
-      <Line
-        points={[[-0.6, 1.5, 0], [-0.8, 2, 0], [-1, 1.8, 0]]}
-        color="#00ffcc"
-        lineWidth={2}
-      />
-      <Line
-        points={[[0.6, -1.5, 0], [0.8, -2, 0], [1, -1.8, 0]]}
-        color="#0066ff"
-        lineWidth={2}
-      />
-      
-      {/* AI Label */}
-      <Text
-        position={[0, 1.8, 0]}
-        fontSize={0.2}
-        color="#00ffcc"
-        anchorX="center"
-        anchorY="middle"
-      >
-        AI CONTROL
-      </Text>
-    </group>
-  );
-}
-
 export default function Scene() {
   return (
-    <Canvas camera={{ position: [0, 2, 12], fov: 60 }} gl={{ alpha: true }}>
-      <ambientLight intensity={0.2} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
+    <Canvas 
+      camera={{ position: [0, 2, 12], fov: 60 }}
+      onCreated={({ scene }) => {
+        // Safe injection of scene background and fog outside the React reconciler
+        scene.background = new THREE.Color('#05010a');
+        scene.fog = new THREE.Fog('#05010a', 10, 35);
+      }}
+    >
+      {/* Cyberpunk Neon Lighting */}
+      <ambientLight intensity={0.4} />
+      <pointLight position={[10, 10, 10]} intensity={1.5} color="#00ffcc" />
+      <pointLight position={[-10, -10, -10]} intensity={1.5} color="#ff00ff" />
       
-      <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+      {/* Deep Space / Digital dust */}
+      <SpaceDust />
       
-      <Network />
-      
-      <TrafficLight position={[5, 0, 0]} />
-      <TrafficLight position={[-5, 2, -3]} />
-      
-      <OrbitControls 
-        autoRotate 
-        autoRotateSpeed={0.3} 
-        enableZoom={false} 
-        enablePan={false} 
-        maxPolarAngle={Math.PI / 2 + 0.2}
-        minPolarAngle={Math.PI / 2 - 0.5}
-        mouseButtons={{
-          LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN
-        }}
+      {/* Glowing Neon Grid floor (Synthwave/Cyberpunk staple) using native gridHelper */}
+      <gridHelper
+        position={[0, -4, 0]}
+        args={[100, 50, 0x00ffcc, 0xaa00aa]}
       />
       
-      <EffectComposer>
-        <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} />
-      </EffectComposer>
+      {/* Core Network visuals */}
+      <Network />
+      
+      {/* Controls - restricted to keep the grid looking like a floor */}
+      <OrbitControls 
+        autoRotate 
+        autoRotateSpeed={0.4} 
+        enableZoom={true} 
+        enablePan={false} 
+        maxPolarAngle={Math.PI / 2 - 0.05}
+        minPolarAngle={Math.PI / 4}
+      />
     </Canvas>
   );
-}
